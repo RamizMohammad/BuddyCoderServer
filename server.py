@@ -3,45 +3,40 @@ import threading
 import time
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
-from pistonpy import PistonApp
+# No longer need pistonpy, we'll use requests
+import requests 
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
 app = FastAPI()
-piston = PistonApp()
+# piston = PistonApp() # No longer needed
 
-# Enable CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
+# ... (your CORS and DB setup code remains the same) ...
 # ---------------- SQLite Setup ----------------
 def init_db():
     conn = sqlite3.connect("code_storage.db")
-    cur = conn.cursor()
-    cur.execute(
-        """CREATE TABLE IF NOT EXISTS code_storage (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            language TEXT,
-            version TEXT,
-            code TEXT
-        )"""
-    )
-    conn.commit()
-    conn.close()
+    cur = conn.cursor()
+    cur.execute(
+        """CREATE TABLE IF NOT EXISTS code_storage (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            language TEXT,
+            version TEXT,
+            code TEXT
+        )"""
+    )
+    conn.commit()
+    conn.close()
 
 init_db()
 
 # ---------------- Routes ----------------
+PISTON_API_URL = "https://emkc.org/api/v2/piston/execute"
+
 @app.post("/run")
 async def run_code(request: Request):
     data = await request.json()
     language = data.get("language", "python")
-    version = data.get("version", "*")
+    version = data.get("version", "*")  # You might want to get a specific version
     code = data.get("code", "")
 
     # Save code temporarily in SQLite
@@ -55,9 +50,20 @@ async def run_code(request: Request):
     conn.commit()
     conn.close()
 
-    # Run code using Piston
-    file = {"name": f"main.{language}", "content": code}
-    result = piston.run(language=language, version=version, files=[file])
+    # --- REVISED CODE ---
+    # Create the payload for the Piston API
+    payload = {
+        "language": language,
+        "version": version,
+        "files": [
+            {"content": code}
+        ]
+    }
+    
+    # Make the API call directly
+    response = requests.post(PISTON_API_URL, json=payload)
+    result = response.json()
+    # --- END REVISED CODE ---
 
     # Delete after execution (burn after use)
     conn = sqlite3.connect("code_storage.db")
@@ -70,7 +76,7 @@ async def run_code(request: Request):
 
 @app.get("/health")
 async def health():
-    return {"status": "alive"}
+    return {"status": "alive"}
 
 # ---------------- Keep-alive Thread ----------------
 def keep_alive():
