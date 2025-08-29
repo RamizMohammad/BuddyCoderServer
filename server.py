@@ -29,6 +29,8 @@ async def health():
     return {"status": "ok"}
 
 
+from pistonpy import File
+
 @app.post("/run")
 async def run_code(request: Request):
     try:
@@ -43,25 +45,16 @@ async def run_code(request: Request):
         if not version:
             return JSONResponse({"error": f"No default version for {language}"}, status_code=400)
 
-        # ✅ Create a temporary file for the submitted code
+        # ✅ Use pistonpy.File instead of a temp file
         ext = get_extension(language)
-        with tempfile.NamedTemporaryFile(delete=False, suffix=ext, mode="w", encoding="utf-8") as tmp_file:
-            tmp_file.write(code)
-            tmp_filename = tmp_file.name
+        file = File(name=f"Main{ext}", content=code)
 
-        try:
-            # ✅ Pass the file path to piston
-            result = piston.run(
-                language=language,
-                version=version,
-                files=[tmp_filename]
-            )
-        finally:
-            # Clean up file
-            if os.path.exists(tmp_filename):
-                os.remove(tmp_filename)
+        result = piston.run(
+            language=language,
+            version=version,
+            files=[file]
+        )
 
-        print(result)
         return JSONResponse(content=result)
 
     except Exception as e:
