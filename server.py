@@ -15,17 +15,17 @@ app = FastAPI()
 # ---------------- SQLite Setup ----------------
 def init_db():
     conn = sqlite3.connect("code_storage.db")
-    cur = conn.cursor()
-    cur.execute(
-        """CREATE TABLE IF NOT EXISTS code_storage (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            language TEXT,
-            version TEXT,
-            code TEXT
-        )"""
-    )
-    conn.commit()
-    conn.close()
+    cur = conn.cursor()
+    cur.execute(
+        """CREATE TABLE IF NOT EXISTS code_storage (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            language TEXT,
+            version TEXT,
+            code TEXT
+        )"""
+    )
+    conn.commit()
+    conn.close()
 
 init_db()
 
@@ -76,7 +76,7 @@ async def run_code(request: Request):
 
 @app.get("/health")
 async def health():
-    return {"status": "alive"}
+    return {"status": "alive"}
 
 # ---------------- Keep-alive Thread ----------------
 def keep_alive():
