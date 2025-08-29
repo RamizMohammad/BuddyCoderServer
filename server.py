@@ -1,11 +1,11 @@
 import sqlite3
-import tempfile
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
-from fastapi.middleware.cors import CORSMiddleware
-from pistonpy import PistonApp
 import threading
 import time
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+from pistonpy import PistonApp
+from fastapi.middleware.cors import CORSMiddleware
+import uvicorn
 
 app = FastAPI()
 piston = PistonApp()
@@ -19,79 +19,68 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Connect to SQLite (file-based, but you can use ":memory:" for ephemeral)
-conn = sqlite3.connect("code_store.db", check_same_thread=False)
-cursor = conn.cursor()
+# ---------------- SQLite Setup ----------------
+def init_db():
+    conn = sqlite3.connect("code_storage.db")
+    cur = conn.cursor()
+    cur.execute(
+        """CREATE TABLE IF NOT EXISTS code_storage (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            language TEXT,
+            version TEXT,
+            code TEXT
+        )"""
+    )
+    conn.commit()
+    conn.close()
 
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS code_files (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    language TEXT,
-    version TEXT,
-    filename TEXT,
-    code TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-)
-""")
-conn.commit()
+init_db()
 
-DEFAULT_VERSIONS = {
-    "python": "3.10.0",
-    "javascript": "18.15.0",
-    "java": "15.0.2",
-    "c": "10.2.0",
-    "cpp": "10.2.0"
-}
-
+# ---------------- Routes ----------------
 @app.post("/run")
 async def run_code(request: Request):
     data = await request.json()
-    language = data.get("language")
-    code = data.get("code")
+    language = data.get("language", "python")
+    version = data.get("version", "*")
+    code = data.get("code", "")
 
-    if not language or not code:
-        return JSONResponse({"error": "Language and code are required"}, status_code=400)
-
-    version = DEFAULT_VERSIONS.get(language, "*")
-
-    # Save code in DB
-    filename = f"main.{language}"
-    cursor.execute("INSERT INTO code_files (language, version, filename, code) VALUES (?, ?, ?, ?)",
-                   (language, version, filename, code))
-    conn.commit()
-
-    file_id = cursor.lastrowid
-
-    # Retrieve back
-    cursor.execute("SELECT filename, code FROM code_files WHERE id=?", (file_id,))
-    row = cursor.fetchone()
-    file = {"name": row[0], "content": row[1]}
-
-    # Run with Piston
-    result = piston.run(
-        language=language,
-        version=version,
-        files=[file]
+    # Save code temporarily in SQLite
+    conn = sqlite3.connect("code_storage.db")
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO code_storage (language, version, code) VALUES (?, ?, ?)",
+        (language, version, code),
     )
-
-    # Burn after execution
-    cursor.execute("DELETE FROM code_files WHERE id=?", (file_id,))
+    code_id = cur.lastrowid
     conn.commit()
+    conn.close()
 
-    return JSONResponse(result)
+    # Run code using Piston
+    file = {"name": f"main.{language}", "content": code}
+    result = piston.run(language=language, version=version, files=[file])
 
-# Dummy self-ping route
-@app.get("/ping")
-def ping():
+    # Delete after execution (burn after use)
+    conn = sqlite3.connect("code_storage.db")
+    cur = conn.cursor()
+    cur.execute("DELETE FROM code_storage WHERE id=?", (code_id,))
+    conn.commit()
+    conn.close()
+
+    return JSONResponse(content=result)
+
+@app.get("/health")
+async def health():
     return {"status": "alive"}
 
+# ---------------- Keep-alive Thread ----------------
 def keep_alive():
     while True:
-        import requests
         try:
-            requests.get("https://your-app.onrender.com/ping")
+            import requests
+            requests.get("http://localhost:8000/health")
         except Exception:
             pass
-        time.sleep(600)  # ping every 10 mins
+        time.sleep(300)  # Ping every 5 minutes
 
 threading.Thread(target=keep_alive, daemon=True).start()
+
