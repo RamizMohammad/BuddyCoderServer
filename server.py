@@ -4,6 +4,10 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from pistonpy import PistonApp
 from fastapi.middleware.cors import CORSMiddleware
+from pistonpy import File
+import threading
+import time
+import requests
 
 app = FastAPI()
 piston = PistonApp()
@@ -29,7 +33,9 @@ async def health():
     return {"status": "ok"}
 
 
-from pistonpy import File
+@app.get("/ping")
+async def ping():
+    return {"status": "alive"}
 
 @app.post("/run")
 async def run_code(request: Request):
@@ -72,3 +78,17 @@ def get_extension(lang: str) -> str:
         "javascript": ".js"
     }
     return extensions.get(lang.lower(), ".txt")
+
+# ✅ Background thread to self-ping
+def keep_alive():
+    url = "https://buddycoderserver.onrender.com/ping" 
+    while True:
+        try:
+            requests.get(url, timeout=5)
+            print("[KEEP-ALIVE] Pinged", url)
+        except Exception as e:
+            print("[KEEP-ALIVE] Error:", e)
+        time.sleep(300)  # every 5 min
+
+
+threading.Thread(target=keep_alive, daemon=True).start()
