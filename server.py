@@ -1,13 +1,10 @@
-import tempfile
-import os
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
-from pistonpy import PistonApp
-from fastapi.middleware.cors import CORSMiddleware
-from pistonpy import File
 import threading
 import time
 import requests
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
+from pistonpy import PistonApp
 
 app = FastAPI()
 piston = PistonApp()
@@ -37,6 +34,7 @@ async def health():
 async def ping():
     return {"status": "alive"}
 
+
 @app.post("/run")
 async def run_code(request: Request):
     try:
@@ -51,9 +49,9 @@ async def run_code(request: Request):
         if not version:
             return JSONResponse({"error": f"No default version for {language}"}, status_code=400)
 
-        # ✅ Use pistonpy.File instead of a temp file
+        # ✅ Pass a dict for the file
         ext = get_extension(language)
-        file = File(name=f"Main{ext}", content=code)
+        file = {"name": f"Main{ext}", "content": code}
 
         result = piston.run(
             language=language,
@@ -78,6 +76,7 @@ def get_extension(lang: str) -> str:
         "javascript": ".js"
     }
     return extensions.get(lang.lower(), ".txt")
+
 
 # ✅ Background thread to self-ping
 def keep_alive():
