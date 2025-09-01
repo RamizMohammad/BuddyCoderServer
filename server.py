@@ -54,7 +54,7 @@ async def health():
 def keep_alive():
     while True:
         try:
-            requests.get("http://localhost:8000/health", timeout=5)
+            requests.get("https://buddycoderserver-d8iy.onrender.com/health", timeout=5)
         except Exception:
             pass
         time.sleep(300)
