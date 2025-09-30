@@ -19,6 +19,11 @@ from fastapi.staticfiles import StaticFiles
 
 app = FastAPI()
 
+#* Health datas
+serverId = socket.gethostname()
+process = psutil.Process(os.getpid())
+startTime = time.time()
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
