@@ -98,14 +98,6 @@ async def get_health_route(
     if request.method == "OPTIONS":
         return cors_response
 
-    # Validate API key
-    api_key = request.headers.get("x-api-key")
-    if not validate.validate(api_key):
-        return JSONResponse(
-            status_code=401,
-            content={"message": False, "error": "Invalid API key"}
-        )
-
     # Collect and return health stats
     health_data = await run_in_threadpool(collect_health_data)
 
