@@ -14,6 +14,7 @@ import socket
 import json
 import httpx
 from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse
+from fastapi.responses import Response, PlainTextResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 
@@ -34,6 +35,40 @@ app.add_middleware(
 
 # ---------------- Routes ----------------
 PISTON_API_URL = "https://emkc.org/api/v2/piston/execute"
+
+@app.get("/robots.txt", response_class=PlainTextResponse)
+async def robots_txt():
+    content = """User-agent: *
+Allow: /
+
+Sitemap: https://buddycoderserver-d8iy.onrender.com/sitemap.xml
+"""
+    return content
+
+@app.get("/sitemap.xml")
+async def sitemap_xml():
+    base_url = "https://buddycoderserver-d8iy.onrender.com"
+    urls = [
+        {"loc": f"{base_url}/", "priority": "1.0", "changefreq": "daily"},
+        {"loc": f"{base_url}/editor", "priority": "0.9", "changefreq": "daily"},
+        {"loc": f"{base_url}/python", "priority": "0.9", "changefreq": "daily"},
+        {"loc": f"{base_url}/java", "priority": "0.9", "changefreq": "daily"},
+        {"loc": f"{base_url}/c", "priority": "0.9", "changefreq": "daily"},
+        {"loc": f"{base_url}/cpp", "priority": "0.9", "changefreq": "daily"},
+        {"loc": f"{base_url}/javascript", "priority": "0.9", "changefreq": "daily"},
+    ]
+
+    xml = '<?xml version="1.0" encoding="UTF-8"?>\n'
+    xml += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+    for url in urls:
+        xml += "  <url>\n"
+        xml += f"    <loc>{url['loc']}</loc>\n"
+        xml += f"    <changefreq>{url['changefreq']}</changefreq>\n"
+        xml += f"    <priority>{url['priority']}</priority>\n"
+        xml += "  </url>\n"
+    xml += "</urlset>"
+
+    return Response(content=xml, media_type="application/xml")
 
 @app.post("/run")
 async def run_code(request: Request):
