@@ -1,30 +1,41 @@
 import threading
 import time
-from fastapi import FastAPI, Request, BackgroundTasks, Query, Header, Depends
-from fastapi.responses import JSONResponse
-import requests
+from fastapi import FastAPI, Request, BackgroundTasks, Query, Header, Depends, HTTPException, status, File, UploadFile
+from fastapi.responses import JSONResponse, FileResponse, PlainTextResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.concurrency import run_in_threadpool
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from pydantic import BaseModel
 import uvicorn
 import datetime
 import os
-import time
 import psutil
 import socket
 import json
 import httpx
-from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse
-from fastapi.responses import Response, PlainTextResponse
-from fastapi.templating import Jinja2Templates
-from fastapi.staticfiles import StaticFiles
+import requests
+import jwt
+import hashlib
+from pymongo import MongoClient
+from bson import ObjectId
 
+# ---------------- APP & MONGO SETUP ----------------
 app = FastAPI()
+MONGO_URI = os.environ["MONGO_URI"]
+SECRET_KEY = os.environ["SECRET_KEY"]
+ALGORITHM = "HS256"
+UPLOAD_DIR = "./uploads"
 
-#* Health datas
-serverId = socket.gethostname()
-process = psutil.Process(os.getpid())
-startTime = time.time()
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
+mongo_client = MongoClient(MONGO_URI)
+db = mongo_client["buddycoder"]
+users_col = db["users"]
+files_col = db["files"]
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
+
+# ---------------- BASIC MIDDLEWARE ----------------
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -33,43 +44,62 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ---------------- Routes ----------------
+# ---------------- HEALTH VARIABLES ----------------
+serverId = socket.gethostname()
+process = psutil.Process(os.getpid())
+startTime = time.time()
 PISTON_API_URL = "https://emkc.org/api/v2/piston/execute"
 
-@app.get("/robots.txt", response_class=PlainTextResponse)
-async def robots_txt():
-    content = """User-agent: *
-Allow: /
+# ---------------- AUTH & MODELS ----------------
+class User(BaseModel):
+    email: str
+    password: str
 
-Sitemap: https://buddycoderserver-d8iy.onrender.com/sitemap.xml
-"""
-    return content
+def hash_password(password: str):
+    return hashlib.sha256(password.encode()).hexdigest()
 
-@app.get("/sitemap.xml")
-async def sitemap_xml():
-    base_url = "https://buddycoderserver-d8iy.onrender.com"
-    urls = [
-        {"loc": f"{base_url}/", "priority": "1.0", "changefreq": "daily"},
-        {"loc": f"{base_url}/editor", "priority": "0.9", "changefreq": "daily"},
-        {"loc": f"{base_url}/python", "priority": "0.9", "changefreq": "daily"},
-        {"loc": f"{base_url}/java", "priority": "0.9", "changefreq": "daily"},
-        {"loc": f"{base_url}/c", "priority": "0.9", "changefreq": "daily"},
-        {"loc": f"{base_url}/cpp", "priority": "0.9", "changefreq": "daily"},
-        {"loc": f"{base_url}/javascript", "priority": "0.9", "changefreq": "daily"},
-    ]
+def create_token(data: dict):
+    payload = data.copy()
+    payload["exp"] = datetime.datetime.utcnow() + datetime.timedelta(hours=12)
+    return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
-    xml = '<?xml version="1.0" encoding="UTF-8"?>\n'
-    xml += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
-    for url in urls:
-        xml += "  <url>\n"
-        xml += f"    <loc>{url['loc']}</loc>\n"
-        xml += f"    <changefreq>{url['changefreq']}</changefreq>\n"
-        xml += f"    <priority>{url['priority']}</priority>\n"
-        xml += "  </url>\n"
-    xml += "</urlset>"
+def decode_token(token: str):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        return payload
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
 
-    return Response(content=xml, media_type="application/xml")
+async def get_current_user(token: str = Depends(oauth2_scheme)):
+    user_data = decode_token(token)
+    user = users_col.find_one({"email": user_data["email"]})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
 
+# ---------------- AUTH ROUTES ----------------
+@app.post("/register")
+async def register_user(user: User):
+    if users_col.find_one({"email": user.email}):
+        raise HTTPException(status_code=400, detail="User already exists")
+    users_col.insert_one({
+        "email": user.email,
+        "password": hash_password(user.password),
+        "createdAt": datetime.datetime.utcnow()
+    })
+    return {"message": "User registered successfully"}
+
+@app.post("/login")
+async def login(form_data: OAuth2PasswordRequestForm = Depends()):
+    user = users_col.find_one({"email": form_data.username})
+    if not user or user["password"] != hash_password(form_data.password):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    token = create_token({"email": user["email"]})
+    return {"access_token": token, "token_type": "bearer"}
+
+# ---------------- CODE EXECUTION ----------------
 @app.post("/run")
 async def run_code(request: Request):
     try:
@@ -81,92 +111,74 @@ async def run_code(request: Request):
         payload = {
             "language": language,
             "version": version,
-            "files": [
-                {"content": code}
-            ]
+            "files": [{"content": code}]
         }
-        
-        response = requests.post(PISTON_API_URL, json=payload, timeout=10) 
+
+        response = requests.post(PISTON_API_URL, json=payload, timeout=10)
         response.raise_for_status()
-        
         result = response.json()
         return JSONResponse(content=result)
-
-    except requests.exceptions.RequestException as e:
-        return JSONResponse(content={"error": f"Failed to connect to execution service: {e}"}, status_code=500)
     except Exception as e:
-        return JSONResponse(content={"error": f"An unexpected error occurred: {e}"}, status_code=500)
+        return JSONResponse(content={"error": str(e)}, status_code=500)
 
-async def cors_health_preflight(
-    request: Request,
-    origin: str = Header(default="*"),
-    access_control_request_method: str = Header(default=""),
-    access_control_request_headers: str = Header(default="*"),
-):
-    if request.method == "OPTIONS":
-        return JSONResponse(
-            status_code=200,
-            content={},
-            headers={
-                "Access-Control-Allow-Origin": origin,
-                "Access-Control-Allow-Methods": "GET, OPTIONS",
-                "Access-Control-Allow-Headers": access_control_request_headers,
-                "Access-Control-Max-Age": "86400"
-            }
-        )
+# ---------------- FILE ROUTES ----------------
+@app.post("/upload")
+async def upload_file(file: UploadFile = File(...), user=Depends(get_current_user)):
+    filename = f"{user['_id']}_{file.filename}"
+    file_path = os.path.join(UPLOAD_DIR, filename)
 
+    with open(file_path, "wb") as f:
+        content = await file.read()
+        f.write(content)
+
+    files_col.insert_one({
+        "user_id": str(user["_id"]),
+        "filename": file.filename,
+        "stored_name": filename,
+        "path": file_path,
+        "uploadedAt": datetime.datetime.utcnow()
+    })
+    return {"message": "File uploaded successfully"}
+
+@app.get("/files")
+async def list_user_files(user=Depends(get_current_user)):
+    files = list(files_col.find({"user_id": str(user["_id"])}))
+    for f in files:
+        f["_id"] = str(f["_id"])
+    return {"files": files}
+
+@app.get("/download/{file_id}")
+async def download_file(file_id: str, user=Depends(get_current_user)):
+    file_entry = files_col.find_one({"_id": ObjectId(file_id), "user_id": str(user["_id"])})
+    if not file_entry:
+        raise HTTPException(status_code=404, detail="File not found")
+    return FileResponse(file_entry["path"], filename=file_entry["filename"])
+
+# ---------------- HEALTH ----------------
 def collect_health_data():
     cpu = psutil.cpu_percent(interval=0.1)
     memory = psutil.virtual_memory().percent
     disk = psutil.disk_usage('/').percent
-    load_avg = os.getloadavg() if hasattr(os, 'getloadavg') else (0.0, 0.0, 0.0)
     uptime = round(time.time() - startTime, 2)
-    threads = process.num_threads()
-    process_memory = round(process.memory_info().rss / (1024 ** 2), 2)
-
     return {
         "serverId": serverId,
         "cpu": cpu,
         "memory": memory,
         "disk": disk,
         "uptime": uptime,
-        "loadAvg": {
-            "1m": round(load_avg[0], 2),
-            "5m": round(load_avg[1], 2),
-            "15m": round(load_avg[2], 2)
-        },
-        "threads": threads,
-        "processMemoryMB": process_memory,
         "active": True
     }
 
-@app.api_route("/health", methods=["GET", "OPTIONS"])
-async def get_health_route(
-    request: Request,
-    cors_response=Depends(cors_health_preflight)
-):
-    # Handle preflight CORS
-    if request.method == "OPTIONS":
-        return cors_response
-
-    # Collect and return health stats
+@app.get("/health")
+async def health():
     health_data = await run_in_threadpool(collect_health_data)
-
-    return JSONResponse(
-        status_code=200,
-        content=health_data,
-        headers={
-            "X-Server-ID": serverId,
-            "X-Response-Time": str(round(time.time(), 2)),
-            "Access-Control-Allow-Origin": "*",  # for GET response
-        }
-    )
+    return JSONResponse(content=health_data)
 
 @app.get("/alive")
-async def health():
+async def alive():
     return {"status": "alive"}
 
-# ---------------- Keep-alive Thread ----------------
+# ---------------- KEEP-ALIVE ----------------
 def keep_alive():
     while True:
         try:
