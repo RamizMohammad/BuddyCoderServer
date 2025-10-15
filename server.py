@@ -182,7 +182,7 @@ async def alive():
 def keep_alive():
     while True:
         try:
-            requests.get("https://buddycoderserver-d8iy.onrender.com/alive", timeout=5)
+            requests.get("https://buddycoderserver.onrender.com/alive", timeout=5)
         except Exception:
             pass
         time.sleep(300)
