@@ -84,12 +84,13 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
 async def register_user(user: User):
     if users_col.find_one({"email": user.email}):
         raise HTTPException(status_code=400, detail="User already exists")
-    users_col.insert_one({
+    result = users_col.insert_one({
         "email": user.email,
         "password": hash_password(user.password),
-        "createdAt": datetime.datetime.utcnow()
+        "createdAt": datetime.datetime.utcnow(),
+        "saved_files": []   # initialize saved_files array
     })
-    return {"message": "User registered successfully"}
+    return {"message": "User registered successfully", "user_id": str(result.inserted_id)}
 
 @app.post("/login")
 async def login(form_data: OAuth2PasswordRequestForm = Depends()):
@@ -124,32 +125,107 @@ async def run_code(request: Request):
 # ---------------- FILE ROUTES ----------------
 @app.post("/upload")
 async def upload_file(file: UploadFile = File(...), user=Depends(get_current_user)):
-    filename = f"{user['_id']}_{file.filename}"
-    file_path = os.path.join(UPLOAD_DIR, filename)
+    """
+    Uploads file to disk and files collection.
+    Also appends the file's ObjectId (as string) to user's `saved_files` array.
+    Returns file metadata including the file_id so frontend can reference it.
+    """
+    # create an ObjectId up-front so we can use it as the _id in the files collection
+    new_file_id = ObjectId()
+    stored_name = f"{str(new_file_id)}_{file.filename}"
+    file_path = os.path.join(UPLOAD_DIR, stored_name)
 
+    # write file to disk
     with open(file_path, "wb") as f:
         content = await file.read()
         f.write(content)
 
+    # insert file metadata using the pre-generated ObjectId
     files_col.insert_one({
+        "_id": new_file_id,
         "user_id": str(user["_id"]),
         "filename": file.filename,
-        "stored_name": filename,
+        "stored_name": stored_name,
         "path": file_path,
         "uploadedAt": datetime.datetime.utcnow()
     })
-    return {"message": "File uploaded successfully"}
+
+    # ensure saved_files field exists and push this file id (string) into it
+    users_col.update_one(
+        {"_id": user["_id"]},
+        {"$push": {"saved_files": str(new_file_id)}}
+    )
+
+    return {
+        "message": "File uploaded successfully",
+        "file_id": str(new_file_id),
+        "filename": file.filename,
+        "stored_name": stored_name
+    }
 
 @app.get("/files")
 async def list_user_files(user=Depends(get_current_user)):
+    """
+    Returns the files that belong to the current user.
+    This is a simple list of file metadata from the files collection.
+    """
     files = list(files_col.find({"user_id": str(user["_id"])}))
     for f in files:
         f["_id"] = str(f["_id"])
+        # convert BSON datetimes to ISO strings if present
+        if isinstance(f.get("uploadedAt"), datetime.datetime):
+            f["uploadedAt"] = f["uploadedAt"].isoformat()
     return {"files": files}
+
+@app.get("/me")
+async def me(user=Depends(get_current_user)):
+    """
+    Returns user profile and the populated saved files array in a single response.
+    Ideal for a side panel to show user info and all files saved by them.
+    """
+    # Ensure user has saved_files key
+    saved_file_ids = user.get("saved_files", []) or []
+
+    # Convert each id string into ObjectId safely
+    object_ids = []
+    for fid in saved_file_ids:
+        try:
+            object_ids.append(ObjectId(fid))
+        except Exception:
+            # skip invalid ids
+            pass
+
+    files = []
+    if object_ids:
+        files_cursor = files_col.find({"_id": {"$in": object_ids}})
+        for f in files_cursor:
+            f["_id"] = str(f["_id"])
+            if isinstance(f.get("uploadedAt"), datetime.datetime):
+                f["uploadedAt"] = f["uploadedAt"].isoformat()
+            files.append(f)
+
+    # Build user info (don't send password)
+    user_info = {
+        "email": user.get("email"),
+        "_id": str(user.get("_id")),
+        "createdAt": user.get("createdAt").isoformat() if isinstance(user.get("createdAt"), datetime.datetime) else user.get("createdAt"),
+        "saved_files": saved_file_ids
+    }
+
+    return {"user": user_info, "files": files}
 
 @app.get("/download/{file_id}")
 async def download_file(file_id: str, user=Depends(get_current_user)):
-    file_entry = files_col.find_one({"_id": ObjectId(file_id), "user_id": str(user["_id"])})
+    """
+    Ensure only the owner can download their file.
+    """
+    # validate that file belongs to user
+    try:
+        oid = ObjectId(file_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid file id")
+
+    file_entry = files_col.find_one({"_id": oid, "user_id": str(user["_id"])})
     if not file_entry:
         raise HTTPException(status_code=404, detail="File not found")
     return FileResponse(file_entry["path"], filename=file_entry["filename"])
