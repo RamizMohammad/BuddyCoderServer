@@ -1,6 +1,6 @@
 import threading
 import time
-from fastapi import FastAPI, Request, BackgroundTasks, Query, Header, Depends, HTTPException, status, File, UploadFile
+from fastapi import FastAPI, Request, BackgroundTasks, Query, Header, Depends, HTTPException, status, File, UploadFile, Body
 from fastapi.responses import JSONResponse, FileResponse, PlainTextResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.concurrency import run_in_threadpool
@@ -99,6 +99,40 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     token = create_token({"email": user["email"]})
     return {"access_token": token, "token_type": "bearer"}
+
+
+@app.put("/files/{file_id}/rename")
+async def rename_file(file_id: str, request: Request, user: dict = Depends(get_current_user)):
+    """
+    Renames a user's file safely by updating the filename field in MongoDB.
+    """
+    try:
+        # Parse new filename from request body
+        data = await request.json()
+        new_filename = data.get("filename")
+
+        if not new_filename or not new_filename.strip():
+            raise HTTPException(status_code=400, detail="Filename cannot be empty")
+
+        try:
+            obj_id = ObjectId(file_id)
+        except InvalidId:
+            raise HTTPException(status_code=400, detail="Invalid file ID format")
+
+        file_entry = files_col.find_one({"_id": obj_id, "user_id": str(user["_id"])})
+        if not file_entry:
+            raise HTTPException(status_code=404, detail="File not found")
+
+        # Update filename in MongoDB
+        files_col.update_one(
+            {"_id": obj_id},
+            {"$set": {"filename": new_filename}}
+        )
+
+        return {"status": "success", "message": "File renamed successfully", "new_name": new_filename}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 # ---------------- CODE EXECUTION ----------------
 @app.post("/run")
