@@ -228,8 +228,17 @@ async def download_file(file_id: str, user: dict = Depends(get_current_user)):
     if not file_entry:
         raise HTTPException(status_code=404, detail="File not found")
 
-    # continue your file download logic...
-    return {"status": "ok", "file_name": file_entry["name"]}
+    file_path = file_entry["path"]
+    filename = file_entry["filename"]
+
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="File missing on server")
+
+    return FileResponse(
+        path=file_path,
+        filename=filename,
+        media_type="application/octet-stream"
+    )
 
 # ---------------- HEALTH ----------------
 def collect_health_data():
