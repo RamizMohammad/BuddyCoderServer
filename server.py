@@ -215,20 +215,21 @@ async def me(user=Depends(get_current_user)):
     return {"user": user_info, "files": files}
 
 @app.get("/download/{file_id}")
-async def download_file(file_id: str, user=Depends(get_current_user)):
-    """
-    Ensure only the owner can download their file.
-    """
-    # validate that file belongs to user
-    try:
-        oid = ObjectId(file_id)
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid file id")
+async def download_file(file_id: str, user: dict = Depends(get_current_user)):
+    if not file_id or file_id == "undefined":
+        raise HTTPException(status_code=400, detail="Invalid or missing file_id")
 
-    file_entry = files_col.find_one({"_id": oid, "user_id": str(user["_id"])})
+    try:
+        obj_id = ObjectId(file_id)
+    except InvalidId:
+        raise HTTPException(status_code=400, detail="Invalid file ID format")
+
+    file_entry = files_col.find_one({"_id": obj_id, "user_id": str(user["_id"])})
     if not file_entry:
         raise HTTPException(status_code=404, detail="File not found")
-    return FileResponse(file_entry["path"], filename=file_entry["filename"])
+
+    # continue your file download logic...
+    return {"status": "ok", "file_name": file_entry["name"]}
 
 # ---------------- HEALTH ----------------
 def collect_health_data():
