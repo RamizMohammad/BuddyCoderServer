@@ -311,3 +311,13 @@ def keep_alive():
         time.sleep(300)
 
 threading.Thread(target=keep_alive, daemon=True).start()
+
+if __name__ == "__main__":
+    uvicorn.run(
+        "main:app",   # change "main" to your filename without .py
+        host="0.0.0.0",
+        port=443,
+        ssl_certfile="/etc/letsencrypt/live/api.server.buddycode.online/fullchain.pem",
+        ssl_keyfile="/etc/letsencrypt/live/api.server.buddycode.online/privkey.pem",
+        workers=2
+    )
