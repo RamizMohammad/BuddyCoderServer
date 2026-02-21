@@ -305,7 +305,7 @@ async def alive():
 
 if __name__ == "__main__":
     uvicorn.run(
-        "main:app",   # change "main" to your filename without .py
+        "server:app",   # change "main" to your filename without .py
         host="0.0.0.0",
         port=443,
         ssl_certfile="/etc/letsencrypt/live/api.server.buddycode.online/fullchain.pem",
