@@ -51,7 +51,7 @@ app.add_middleware(
 serverId = socket.gethostname()
 process = psutil.Process(os.getpid())
 startTime = time.time()
-PISTON_API_URL = "https://emkc.org/api/v2/execute"
+PISTON_API_URL = "https://emkc.org/api/v2/piston/execute"
 
 # ---------------- AUTH & MODELS ----------------
 class User(BaseModel):
