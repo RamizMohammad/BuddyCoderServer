@@ -301,17 +301,6 @@ async def health():
 async def alive():
     return {"status": "alive"}
 
-# ---------------- KEEP-ALIVE ----------------
-def keep_alive():
-    while True:
-        try:
-            requests.get("https://buddycoderserver.onrender.com/alive", timeout=5)
-        except Exception:
-            pass
-        time.sleep(300)
-
-threading.Thread(target=keep_alive, daemon=True).start()
-
 if __name__ == "__main__":
     uvicorn.run(
         "main:app",   # change "main" to your filename without .py
