@@ -51,7 +51,30 @@ app.add_middleware(
 serverId = socket.gethostname()
 process = psutil.Process(os.getpid())
 startTime = time.time()
-PISTON_API_URL = "https://emkc.org/api/v2/piston/execute"
+WANDBOX_API_URL = "https://wandbox.org/api/compile.ndjson"
+
+# ---------------- LANGUAGE MAP ----------------
+LANGUAGE_MAP = {
+    "python":       {"compiler": "cpython-3.14.0",      "options": ""},
+    "javascript":   {"compiler": "nodejs-20.17.0",      "options": ""},
+    "js":           {"compiler": "nodejs-20.17.0",      "options": ""},
+    "c":            {"compiler": "gcc-13.2.0-c",        "options": "warning,gnu11,cpp-no-pedantic"},
+    "cpp":          {"compiler": "gcc-13.2.0",          "options": "warning,boost-1.83.0-gcc-13.2.0,gnu++2b,cpp-no-pedantic"},
+    "c++":          {"compiler": "gcc-13.2.0",          "options": "warning,boost-1.83.0-gcc-13.2.0,gnu++2b,cpp-no-pedantic"},
+    "java":         {"compiler": "openjdk-jdk-22+36",   "options": ""},
+    "ruby":         {"compiler": "ruby-3.3.0",          "options": ""},
+    "go":           {"compiler": "go-1.22.0",           "options": ""},
+    "rust":         {"compiler": "rust-1.76.0",         "options": ""},
+    "php":          {"compiler": "php-8.3.0",           "options": ""},
+    "swift":        {"compiler": "swift-5.9.2",         "options": ""},
+    "kotlin":       {"compiler": "kotlin-1.9.22",       "options": ""},
+    "typescript":   {"compiler": "typescript-5.3.3",    "options": ""},
+    "ts":           {"compiler": "typescript-5.3.3",    "options": ""},
+    "bash":         {"compiler": "bash",                "options": ""},
+    "lua":          {"compiler": "lua-5.4.4",           "options": ""},
+    "perl":         {"compiler": "perl-5.38.0",         "options": ""},
+    "r":            {"compiler": "r-4.3.2",             "options": ""},
+}
 
 # ---------------- AUTH & MODELS ----------------
 class User(BaseModel):
@@ -91,7 +114,7 @@ async def register_user(user: User):
         "email": user.email,
         "password": hash_password(user.password),
         "createdAt": datetime.datetime.utcnow(),
-        "saved_files": []   # initialize saved_files array
+        "saved_files": []
     })
     return {"message": "User registered successfully", "user_id": str(result.inserted_id)}
 
@@ -103,14 +126,13 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
     token = create_token({"email": user["email"]})
     return {"access_token": token, "token_type": "bearer"}
 
-
+# ---------------- FILE RENAME ----------------
 @app.put("/files/{file_id}/rename")
 async def rename_file(file_id: str, request: Request, user: dict = Depends(get_current_user)):
     """
     Renames a user's file safely by updating the filename field in MongoDB.
     """
     try:
-        # Parse new filename from request body
         data = await request.json()
         new_filename = data.get("filename")
 
@@ -119,14 +141,13 @@ async def rename_file(file_id: str, request: Request, user: dict = Depends(get_c
 
         try:
             obj_id = ObjectId(file_id)
-        except InvalidId:
+        except Exception:
             raise HTTPException(status_code=400, detail="Invalid file ID format")
 
         file_entry = files_col.find_one({"_id": obj_id, "user_id": str(user["_id"])})
         if not file_entry:
             raise HTTPException(status_code=404, detail="File not found")
 
-        # Update filename in MongoDB
         files_col.update_one(
             {"_id": obj_id},
             {"$set": {"filename": new_filename}}
@@ -142,21 +163,51 @@ async def rename_file(file_id: str, request: Request, user: dict = Depends(get_c
 async def run_code(request: Request):
     try:
         data = await request.json()
-        language = data.get("language", "python")
-        version = data.get("version", "*")
+        language = data.get("language", "python").lower().strip()
         code = data.get("code", "")
 
+        lang_config = LANGUAGE_MAP.get(language)
+        if not lang_config:
+            return JSONResponse(
+                content={"error": f"Unsupported language: '{language}'. Supported: {list(LANGUAGE_MAP.keys())}"},
+                status_code=400
+            )
+
         payload = {
-            "language": language,
-            "version": version,
-            "files": [{"content": code}]
+            "compiler": lang_config["compiler"],
+            "options": lang_config["options"],
+            "code": code,
+            "codes": [],
+            "compiler-option-raw": "",
+            "runtime-option-raw": "",
+            "stdin": data.get("stdin", ""),
+            "title": "",
+            "description": ""
         }
 
-        response = requests.post(PISTON_API_URL, json=payload, timeout=10)
-        print(response.text)
+        response = requests.post(WANDBOX_API_URL, json=payload, timeout=15)
         response.raise_for_status()
-        result = response.json()
-        return JSONResponse(content=result)
+
+        output = ""
+        stderr = ""
+        exit_code = None
+
+        for line in response.text.strip().split("\n"):
+            if line:
+                obj = json.loads(line)
+                if obj.get("type") == "StdOut":
+                    output += obj["data"]
+                elif obj.get("type") == "StdErr":
+                    stderr += obj["data"]
+                elif obj.get("type") == "ExitCode":
+                    exit_code = obj["data"]
+
+        return JSONResponse(content={
+            "output": output,
+            "stderr": stderr,
+            "exit_code": exit_code
+        })
+
     except Exception as e:
         print(str(e))
         return JSONResponse(content={"error": str(e)}, status_code=500)
@@ -166,20 +217,16 @@ async def run_code(request: Request):
 async def upload_file(file: UploadFile = File(...), user=Depends(get_current_user)):
     """
     Uploads file to disk and files collection.
-    Also appends the file's ObjectId (as string) to user's `saved_files` array.
-    Returns file metadata including the file_id so frontend can reference it.
+    Also appends the file's ObjectId (as string) to user's saved_files array.
     """
-    # create an ObjectId up-front so we can use it as the _id in the files collection
     new_file_id = ObjectId()
     stored_name = f"{str(new_file_id)}_{file.filename}"
     file_path = os.path.join(UPLOAD_DIR, stored_name)
 
-    # write file to disk
     with open(file_path, "wb") as f:
         content = await file.read()
         f.write(content)
 
-    # insert file metadata using the pre-generated ObjectId
     files_col.insert_one({
         "_id": new_file_id,
         "user_id": str(user["_id"]),
@@ -189,7 +236,6 @@ async def upload_file(file: UploadFile = File(...), user=Depends(get_current_use
         "uploadedAt": datetime.datetime.utcnow()
     })
 
-    # ensure saved_files field exists and push this file id (string) into it
     users_col.update_one(
         {"_id": user["_id"]},
         {"$push": {"saved_files": str(new_file_id)}}
@@ -206,12 +252,10 @@ async def upload_file(file: UploadFile = File(...), user=Depends(get_current_use
 async def list_user_files(user=Depends(get_current_user)):
     """
     Returns the files that belong to the current user.
-    This is a simple list of file metadata from the files collection.
     """
     files = list(files_col.find({"user_id": str(user["_id"])}))
     for f in files:
         f["_id"] = str(f["_id"])
-        # convert BSON datetimes to ISO strings if present
         if isinstance(f.get("uploadedAt"), datetime.datetime):
             f["uploadedAt"] = f["uploadedAt"].isoformat()
     return {"files": files}
@@ -220,18 +264,14 @@ async def list_user_files(user=Depends(get_current_user)):
 async def me(user=Depends(get_current_user)):
     """
     Returns user profile and the populated saved files array in a single response.
-    Ideal for a side panel to show user info and all files saved by them.
     """
-    # Ensure user has saved_files key
     saved_file_ids = user.get("saved_files", []) or []
 
-    # Convert each id string into ObjectId safely
     object_ids = []
     for fid in saved_file_ids:
         try:
             object_ids.append(ObjectId(fid))
         except Exception:
-            # skip invalid ids
             pass
 
     files = []
@@ -243,7 +283,6 @@ async def me(user=Depends(get_current_user)):
                 f["uploadedAt"] = f["uploadedAt"].isoformat()
             files.append(f)
 
-    # Build user info (don't send password)
     user_info = {
         "email": user.get("email"),
         "_id": str(user.get("_id")),
@@ -260,7 +299,7 @@ async def download_file(file_id: str, user: dict = Depends(get_current_user)):
 
     try:
         obj_id = ObjectId(file_id)
-    except InvalidId:
+    except Exception:
         raise HTTPException(status_code=400, detail="Invalid file ID format")
 
     file_entry = files_col.find_one({"_id": obj_id, "user_id": str(user["_id"])})
@@ -305,7 +344,7 @@ async def alive():
 
 if __name__ == "__main__":
     uvicorn.run(
-        "server:app",   # change "main" to your filename without .py
+        "server:app",
         host="0.0.0.0",
         port=443,
         ssl_certfile="/etc/letsencrypt/live/api.server.buddycode.online/fullchain.pem",
