@@ -153,10 +153,12 @@ async def run_code(request: Request):
         }
 
         response = requests.post(PISTON_API_URL, json=payload, timeout=10)
+        print(response.text)
         response.raise_for_status()
         result = response.json()
         return JSONResponse(content=result)
     except Exception as e:
+        print(str(e))
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
 # ---------------- FILE ROUTES ----------------
