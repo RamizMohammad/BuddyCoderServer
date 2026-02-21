@@ -9,3 +9,4 @@ PyJWT==2.10.1
 pymongo==4.9.1
 psutil==5.9.8
 python-multipart
+dotenv

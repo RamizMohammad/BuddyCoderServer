@@ -18,11 +18,14 @@ import jwt
 import hashlib
 from pymongo import MongoClient
 from bson import ObjectId
+import dotenv
+
+dotenv.load_dotenv()
 
 # ---------------- APP & MONGO SETUP ----------------
 app = FastAPI()
-MONGO_URI = os.environ["MONGO_URI"]
-SECRET_KEY = os.environ["SECRET_KEY"]
+MONGO_URI = os.getenv["MONGO_URI"]
+SECRET_KEY = os.getenv["SECRET_KEY"]
 ALGORITHM = "HS256"
 UPLOAD_DIR = "./uploads"
 
