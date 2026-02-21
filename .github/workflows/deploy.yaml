@@ -25,8 +25,9 @@ jobs:
       - name: Deploy via SSH
         run: |
           ssh root@${{ secrets.VPS_IP }} \
-            "cd /root/BuddyCoderServer/backend && \
-            git pull origin main && \
+            "cd /root/BuddyCoderServer && \
+            git fetch origin main && \
+            git reset --hard origin/main && \
             source /root/miniconda3/etc/profile.d/conda.sh && \
             conda activate py310 && \
             pip install -r requirements.txt && \
