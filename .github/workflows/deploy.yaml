@@ -18,21 +18,18 @@ jobs:
         with:
           ssh-private-key: ${{ secrets.VPS }}
 
+      - name: Add VPS to known hosts
+        run: |
+          ssh-keyscan -H ${{ secrets.VPS_IP }} >> ~/.ssh/known_hosts
+
       - name: Deploy via SSH
         run: |
-          ssh -o StrictHostKeyChecking=no root@${{ secrets.VPS_IP }} << 'EOF'
-            cd /root/BuddyCoderServer
-            echo "Pulling latest code..."
-            git fetch origin main
-            git reset --hard origin/main
-            echo "Activating conda..."
-            source /root/miniconda3/etc/profile.d/conda.sh
-            conda activate py310
-            echo "Installing dependencies..."
-            pip install -r requirements.txt
-            echo "Restarting tmux session..."
-            tmux send-keys -t budduyServer C-c
-            sleep 2
-            tmux send-keys -t budduyServer "source /root/miniconda3/etc/profile.d/conda.sh && conda activate py310 && python server.py" C-m
-            echo "Deployment complete!"
-          EOF
+          ssh root@${{ secrets.VPS_IP }} \
+            "cd /root/BuddyCoderServer && \
+            git pull origin main && \
+            source /root/miniconda3/etc/profile.d/conda.sh && \
+            conda activate py310 && \
+            pip install -r requirements.txt && \
+            tmux send-keys -t budduyServer C-c && \
+            sleep 2 && \
+            tmux send-keys -t budduyServer 'source /root/miniconda3/etc/profile.d/conda.sh && conda activate py310 && python server.py' C-m"
