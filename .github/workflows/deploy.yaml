@@ -1,45 +1,38 @@
 name: Deploy to VPS
 
 on:
-push:
-branches:
-- main
+  push:
+    branches:
+      - main
 
 jobs:
-deploy:
-runs-on: ubuntu-latest
+  deploy:
+    runs-on: ubuntu-latest
 
-```
-steps:
-  - name: Checkout code
-    uses: actions/checkout@v3
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-  - name: Setup SSH
-    uses: webfactory/ssh-agent@v0.7.0
-    with:
-      ssh-private-key: ${{ secrets.VPS }}
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.7.0
+        with:
+          ssh-private-key: ${{ secrets.VPS }}
 
-  - name: Deploy via SSH
-    run: |
-      ssh -o StrictHostKeyChecking=no root@${{ secrets.VPS_IP }} << 'EOF'
-        cd /root/BuddyCoderServer
-
-        echo "Pulling latest code..."
-        git fetch origin main
-        git reset --hard origin/main
-
-        echo "Activating conda..."
-        source /root/miniconda3/etc/profile.d/conda.sh
-        conda activate py310
-
-        echo "Installing dependencies..."
-        pip install -r requirements.txt
-
-        echo "Restarting tmux session..."
-        tmux send-keys -t budduyServer C-c
-        sleep 2
-        tmux send-keys -t budduyServer "source /root/miniconda3/etc/profile.d/conda.sh && conda activate py310 && python server.py" C-m
-
-        echo "Deployment complete!"
-      EOF
-```
+      - name: Deploy via SSH
+        run: |
+          ssh -o StrictHostKeyChecking=no root@${{ secrets.VPS_IP }} << 'EOF'
+            cd /root/BuddyCoderServer
+            echo "Pulling latest code..."
+            git fetch origin main
+            git reset --hard origin/main
+            echo "Activating conda..."
+            source /root/miniconda3/etc/profile.d/conda.sh
+            conda activate py310
+            echo "Installing dependencies..."
+            pip install -r requirements.txt
+            echo "Restarting tmux session..."
+            tmux send-keys -t budduyServer C-c
+            sleep 2
+            tmux send-keys -t budduyServer "source /root/miniconda3/etc/profile.d/conda.sh && conda activate py310 && python server.py" C-m
+            echo "Deployment complete!"
+          EOF
