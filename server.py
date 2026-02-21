@@ -306,7 +306,7 @@ if __name__ == "__main__":
         "main:app",   # change "main" to your filename without .py
         host="0.0.0.0",
         port=443,
-        ssl_certfile="/etc/letsencrypt/live/api.server.buddycode.online/fullchain.pem",
+        ssl_certfile="/etc/letsencrypt/live/api.server.buddycode.online/fullchain.pe",
         ssl_keyfile="/etc/letsencrypt/live/api.server.buddycode.online/privkey.pem",
         workers=2
     )
