@@ -9,7 +9,6 @@ jobs:
 deploy:
 runs-on: ubuntu-latest
 
-```
 steps:
   - name: Checkout code
     uses: actions/checkout@v3
@@ -46,4 +45,3 @@ steps:
 
         echo "Deployment complete!"
       EOF
-```
