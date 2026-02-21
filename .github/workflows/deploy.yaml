@@ -31,4 +31,4 @@ jobs:
             sleep 3 && \
             tmux send-keys -t budduyServer 'source /root/miniconda3/etc/profile.d/conda.sh && conda activate py310 && pip install -r requirements.txt' Enter && \
             sleep 5 && \
-            tmux send-keys -t budduyServer 'uvicorn server:app --host 0.0.0.0 --port 8000' Enter"
+            tmux send-keys -t budduyServer 'uvicorn server:app --host 0.0.0.0 --port 443' Enter"
