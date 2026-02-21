@@ -25,12 +25,10 @@ jobs:
       - name: Deploy via SSH
         run: |
           ssh root@${{ secrets.VPS_IP }} \
-            "cd /root/Project/BuddyCoderServer && \
-            git fetch origin main && \
-            git reset --hard origin/main && \
-            source /root/miniconda3/etc/profile.d/conda.sh && \
-            conda activate py310 && \
-            pip install -r requirements.txt && \
-            tmux send-keys -t budduyServer C-c && \
+            "tmux send-keys -t budduyServer C-c Enter && \
             sleep 2 && \
-            tmux send-keys -t budduyServer 'source /root/miniconda3/etc/profile.d/conda.sh && conda activate py310 && python server.py' C-m"
+            tmux send-keys -t budduyServer 'cd /root/Projects/BuddyCoderServer && git pull origin main' Enter && \
+            sleep 3 && \
+            tmux send-keys -t budduyServer 'source /root/miniconda3/etc/profile.d/conda.sh && conda activate py310 && pip install -r requirements.txt' Enter && \
+            sleep 5 && \
+            tmux send-keys -t budduyServer 'python server.py' Enter"
