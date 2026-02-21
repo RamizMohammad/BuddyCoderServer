@@ -24,8 +24,8 @@ dotenv.load_dotenv()
 
 # ---------------- APP & MONGO SETUP ----------------
 app = FastAPI()
-MONGO_URI = os.getenv["MONGO_URI"]
-SECRET_KEY = os.getenv["SECRET_KEY"]
+MONGO_URI = os.getenv("MONGO_URI")
+SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = "HS256"
 UPLOAD_DIR = "./uploads"
 
