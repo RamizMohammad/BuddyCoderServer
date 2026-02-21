@@ -27,7 +27,7 @@ jobs:
           ssh root@${{ secrets.VPS_IP }} \
             "tmux send-keys -t budduyServer C-c Enter && \
             sleep 2 && \
-            tmux send-keys -t budduyServer 'cd /root/Projects/BuddyCoderServer && git pull origin main' Enter && \
+            tmux send-keys -t budduyServer 'cd /root/Projects/BuddyCoderServer && git fetch origin main && git reset --hard origin/main' Enter && \
             sleep 3 && \
             tmux send-keys -t budduyServer 'source /root/miniconda3/etc/profile.d/conda.sh && conda activate py310 && pip install -r requirements.txt' Enter && \
             sleep 5 && \
