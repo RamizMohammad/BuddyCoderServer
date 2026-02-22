@@ -10,10 +10,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: Setup SSH
+      - name: Setup SSH Agent
         uses: webfactory/ssh-agent@v0.7.0
         with:
           ssh-private-key: ${{ secrets.VPS }}
@@ -22,13 +22,24 @@ jobs:
         run: |
           ssh-keyscan -H ${{ secrets.VPS_IP }} >> ~/.ssh/known_hosts
 
-      - name: Deploy via SSH
+      - name: Deploy with Docker
         run: |
-          ssh root@${{ secrets.VPS_IP }} \
-            "tmux send-keys -t budduyServer C-c Enter && \
-            sleep 2 && \
-            tmux send-keys -t budduyServer 'cd /root/Projects/BuddyCoderServer && git fetch origin main && git reset --hard origin/main' Enter && \
-            sleep 3 && \
-            tmux send-keys -t budduyServer 'source /root/miniconda3/etc/profile.d/conda.sh && conda activate py310 && pip install -r requirements.txt' Enter && \
-            sleep 5 && \
-            tmux send-keys -t budduyServer 'python server.py' Enter"
+          ssh root@${{ secrets.VPS_IP }} bash << 'EOF'
+            echo "Starting deployment..."
+            cd /root/Projects/BuddyCoderServer
+
+            echo "Pull latest code"
+            git fetch origin main
+            git reset --hard origin/main
+
+            echo "Stopping old container"
+            docker compose down
+
+            echo "Building and starting new container"
+            docker compose up -d --build
+
+            echo "Cleaning unused images"
+            docker image prune -f
+
+            echo "Deployment completed"
+          EOF
