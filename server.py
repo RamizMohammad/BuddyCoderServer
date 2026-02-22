@@ -342,6 +342,10 @@ async def health():
 async def alive():
     return {"status": "alive"}
 
+@app.get("/dev")
+async def dev():
+    return "Badmosh aya re"
+
 if __name__ == "__main__":
     uvicorn.run(
         "server:app",
