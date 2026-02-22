@@ -22,7 +22,6 @@ from datetime import datetime, timedelta, timezone
 from functools import wraps
 from pathlib import Path
 from typing import Optional
-
 import bcrypt
 import httpx
 import jwt
