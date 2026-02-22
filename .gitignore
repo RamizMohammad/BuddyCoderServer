@@ -2,4 +2,6 @@
 code_store.db
 dockerfile
 docker-compose.yml
-
+nginx
+uploads
+__pycache__
