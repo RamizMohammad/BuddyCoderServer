@@ -182,6 +182,7 @@ app.add_middleware(
     allow_origins=[
         "https://www.buddycode.online",
         "https://buddycode.online",
+        "https://buddycode-qa.vercel.app",
     ],
     allow_credentials=True,
     allow_methods=["*"],
