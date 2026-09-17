@@ -69,7 +69,7 @@ ALLOWED_MIME_TYPES = {
     "application/zip",
 }
 
-ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "").split(",")
 
 WANDBOX_API_URL = "https://wandbox.org/api/compile.ndjson"
 WANDBOX_TIMEOUT = 20  # seconds
@@ -180,8 +180,8 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://www.buddycode.online",
-        "https://buddycode.online",
+        "https://cloudide.space",
+        "https://www.cloudide.space",
     ],
     allow_credentials=True,
     allow_methods=["*"],
